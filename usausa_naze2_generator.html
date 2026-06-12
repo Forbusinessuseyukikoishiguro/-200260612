@@ -1,0 +1,837 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>うさうさ なぜなぜ分析ジェネレーター PRO</title>
+<style>
+/* =========================================================
+   うさうさ なぜなぜ分析ジェネレーター PRO  v1.2.0
+   テーマ：メルヘン深海への船旅
+   魚が泳ぎ・うさぎが小舟で観覧・ときどき亀・きらきら。
+   PDF / CSV 出力、各ノードのメモ対応。
+   オフラインファースト・バニラJS・AIはオプション
+   ========================================================= */
+:root{
+  --surface:#2E6FA0;--upper:#1C4E7E;--mid:#123A66;--deep:#0A2547;--abyss:#04122B;--floor:#020B1C;
+  --biolume-mint:#7BF3DF;--biolume-mint2:#39C9B8;--biolume-coral:#FF9E7D;--biolume-violet:#B89CE6;
+  --gold:#F4D9A0;--pearl:#EDF6F4;--pearl-dim:#A6C0D6;
+  --glass:rgba(123,243,223,.05);--glass-line:rgba(123,243,223,.18);--porthole:rgba(244,217,160,.45);
+  --shadow:0 14px 50px rgba(0,0,0,.45);
+  --font-display:"Hiragino Maru Gothic ProN","Yu Gothic Medium","Zen Maru Gothic","Noto Sans JP",system-ui,sans-serif;
+  --font-body:"Hiragino Kaku Gothic ProN","Yu Gothic","Noto Sans JP",system-ui,sans-serif;
+  --font-mono:"SFMono-Regular","Consolas","Menlo",monospace;
+}
+*{box-sizing:border-box}
+html,body{margin:0;padding:0}
+body{font-family:var(--font-body);color:var(--pearl);line-height:1.78;-webkit-font-smoothing:antialiased;min-height:100vh;
+  background:linear-gradient(180deg,var(--surface) 0%,var(--upper) 16%,var(--mid) 34%,var(--deep) 60%,var(--abyss) 82%,var(--floor) 100%)}
+
+/* 光だまり・海面のひかり */
+.sea-glow{position:fixed;inset:0;z-index:0;pointer-events:none;overflow:hidden}
+.sea-glow .blob{position:absolute;border-radius:50%;filter:blur(50px);animation:drift 18s ease-in-out infinite}
+.blob.b1{width:320px;height:320px;left:-60px;top:8%;background:var(--biolume-mint);opacity:.18}
+.blob.b2{width:260px;height:260px;right:-40px;top:34%;background:var(--biolume-violet);opacity:.16;animation-delay:-6s}
+.blob.b3{width:300px;height:300px;left:20%;top:70%;background:var(--biolume-coral);opacity:.12;animation-delay:-11s}
+@keyframes drift{0%,100%{transform:translate(0,0)}50%{transform:translate(24px,-30px)}}
+.sea-glow .rays{position:absolute;top:0;left:0;right:0;height:42vh;opacity:.22;
+  background:repeating-linear-gradient(102deg,transparent 0 38px,rgba(255,255,255,.5) 38px 41px);
+  -webkit-mask:linear-gradient(180deg,rgba(0,0,0,.9),transparent);mask:linear-gradient(180deg,rgba(0,0,0,.9),transparent)}
+
+/* のぼる泡 */
+.bubbles{position:fixed;inset:0;z-index:0;pointer-events:none;overflow:hidden}
+.bubble{position:absolute;bottom:-40px;border-radius:50%;
+  background:radial-gradient(circle at 30% 30%,rgba(255,255,255,.6),rgba(123,243,223,.12) 60%,transparent);
+  border:1px solid rgba(255,255,255,.25);animation:rise linear infinite}
+@keyframes rise{0%{transform:translateY(0) translateX(0);opacity:0}10%{opacity:.8}90%{opacity:.6}100%{transform:translateY(-112vh) translateX(20px);opacity:0}}
+
+/* きらきら */
+.sparkles{position:fixed;inset:0;z-index:1;pointer-events:none;overflow:hidden}
+.sparkle{position:absolute;color:#fff;font-size:13px;opacity:0;animation:twinkle 3.4s ease-in-out infinite;
+  text-shadow:0 0 6px var(--biolume-mint)}
+@keyframes twinkle{0%,100%{opacity:0;transform:scale(.4)}50%{opacity:.9;transform:scale(1)}}
+
+/* 泳ぐ魚・亀（カード越しに泳ぐ） */
+.swimzone{position:fixed;inset:0;z-index:1;pointer-events:none;overflow:hidden}
+.fish{position:absolute;will-change:transform}
+.fish .body{display:inline-block;filter:drop-shadow(0 0 7px rgba(123,243,223,.4))}
+@keyframes swimL{from{transform:translateX(112vw)}to{transform:translateX(-16vw)}}
+@keyframes swimR{from{transform:translateX(-16vw)}to{transform:translateX(112vw)}}
+
+/* ただようクラゲ */
+.jelly{position:fixed;z-index:1;pointer-events:none;font-size:30px;
+  filter:drop-shadow(0 0 12px var(--biolume-violet));animation:float 12s ease-in-out infinite;opacity:.5}
+.jelly.j1{left:6%;top:26%}.jelly.j2{right:8%;top:54%;animation-delay:-5s;font-size:24px;filter:drop-shadow(0 0 12px var(--biolume-mint))}
+.jelly.j3{left:14%;top:80%;animation-delay:-8s;font-size:22px}
+@keyframes float{0%,100%{transform:translateY(0) rotate(-3deg)}50%{transform:translateY(-26px) rotate(3deg)}}
+
+/* うさぎの観覧船（スクロールしても見守る） */
+.watcher{position:fixed;top:10px;right:16px;z-index:3;width:72px;pointer-events:none;
+  animation:bobBoat 4.5s ease-in-out infinite;opacity:.95}
+@keyframes bobBoat{0%,100%{transform:translateY(0) rotate(-2deg)}50%{transform:translateY(-7px) rotate(2deg)}}
+
+.wrap{position:relative;z-index:2;max-width:880px;margin:0 auto;padding:0 18px 90px}
+
+/* ヘッダー */
+header{padding:46px 6px 22px;text-align:center}
+.boat{display:block;margin:0 auto 6px;width:104px;height:auto;animation:sail 6s ease-in-out infinite}
+@keyframes sail{0%,100%{transform:translateY(0) rotate(-1.5deg)}50%{transform:translateY(-6px) rotate(1.5deg)}}
+.rabbit{font-size:26px}
+.brand-sub{font-family:var(--font-mono);font-size:11px;letter-spacing:.26em;color:var(--biolume-mint);text-transform:uppercase}
+h1{font-family:var(--font-display);font-size:clamp(24px,5.4vw,38px);margin:.2em 0 .12em;letter-spacing:.01em;text-shadow:0 2px 22px rgba(0,0,0,.5)}
+.voyage-sub{font-family:var(--font-mono);font-size:12px;letter-spacing:.28em;color:var(--gold);margin:.1em 0 .5em}
+.tagline{color:var(--pearl-dim);font-size:13px}.tagline b{color:var(--biolume-coral);font-weight:600}
+
+/* 海面の境い目 */
+.horizon{position:relative;height:2px;margin:30px 0 6px;
+  background:linear-gradient(90deg,transparent,var(--biolume-mint),rgba(255,255,255,.85),var(--biolume-mint),transparent);
+  box-shadow:0 0 26px 2px rgba(123,243,223,.45)}
+.horizon span{position:absolute;top:-28px;left:50%;transform:translateX(-50%);font-size:11px;letter-spacing:.3em;color:var(--biolume-mint);font-family:var(--font-mono);white-space:nowrap}
+
+/* 舷窓カード */
+.card{position:relative;background:var(--glass);border:1px solid var(--glass-line);border-radius:22px;padding:26px 22px;margin:20px 0;
+  backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);box-shadow:var(--shadow),inset 0 0 0 1px rgba(255,255,255,.03)}
+.card::after{content:"";position:absolute;top:16px;right:18px;width:18px;height:18px;border-radius:50%;
+  border:2px solid var(--porthole);box-shadow:0 0 0 3px rgba(244,217,160,.12),inset 0 0 6px rgba(244,217,160,.3);opacity:.8}
+.eyebrow{display:inline-flex;align-items:center;gap:9px;font-family:var(--font-mono);font-size:11px;letter-spacing:.16em;color:var(--biolume-mint);text-transform:uppercase;margin-bottom:4px}
+.eyebrow .num{display:inline-grid;place-items:center;width:26px;height:26px;border-radius:50%;
+  background:radial-gradient(circle at 35% 30%,var(--gold),#caa45f);color:#2a1c06;font-weight:800;font-size:13px;box-shadow:0 0 0 3px rgba(244,217,160,.18)}
+.card h2{font-family:var(--font-display);font-size:20px;margin:.1em 0 .2em}
+.card .hint{color:var(--pearl-dim);font-size:13px;margin:0 0 14px}
+
+/* フィールド */
+.field{margin:14px 0}
+.field label{display:block;font-size:13px;font-weight:700;margin-bottom:6px}
+.field label .tag{font-family:var(--font-mono);font-size:11px;color:#08243f;background:var(--biolume-mint);border-radius:6px;padding:1px 7px;margin-left:8px;letter-spacing:.05em}
+.field .desc{color:var(--pearl-dim);font-size:12px;font-weight:400;margin-left:2px}
+textarea,input[type=text],input[type=date]{width:100%;font-family:var(--font-body);font-size:15px;color:var(--pearl);
+  background:rgba(2,11,28,.5);border:1px solid var(--glass-line);border-radius:13px;padding:11px 13px;resize:vertical;line-height:1.6}
+textarea{min-height:60px}
+textarea:focus,input:focus{outline:none;border-color:var(--biolume-mint);box-shadow:0 0 0 3px rgba(123,243,223,.18)}
+textarea::placeholder,input::placeholder{color:#5f7592}
+
+/* ボタン */
+.btn{font-family:var(--font-body);font-size:14px;font-weight:700;cursor:pointer;border:1px solid var(--glass-line);border-radius:12px;padding:9px 16px;color:var(--pearl);background:var(--glass);
+  transition:transform .08s ease,background .15s ease,filter .15s ease;display:inline-flex;align-items:center;gap:6px}
+.btn:hover{background:rgba(123,243,223,.12);transform:translateY(-1px)}
+.btn:active{transform:translateY(0)}
+.btn:focus-visible{outline:2px solid var(--biolume-mint);outline-offset:2px}
+.btn.ai{background:linear-gradient(135deg,rgba(255,158,125,.92),rgba(184,156,230,.92));border-color:transparent;color:#22113b}
+.btn.ai:hover{filter:brightness(1.08)}
+.btn.mint{background:linear-gradient(135deg,var(--biolume-mint2),var(--biolume-mint));color:#06283a;border-color:transparent}
+.btn.ghost{background:transparent}
+.btn.sm{font-size:12.5px;padding:6px 11px;border-radius:10px}
+.btn.danger{color:#ffc0c0;border-color:rgba(255,120,120,.35)}.btn.danger:hover{background:rgba(255,80,80,.14)}
+.btn:disabled{opacity:.5;cursor:wait}
+.row{display:flex;flex-wrap:wrap;gap:8px;align-items:center}.row.end{justify-content:flex-end}.spacer{flex:1}
+
+/* ガイド */
+details.guide{background:rgba(2,11,28,.4);border:1px dashed var(--glass-line);border-radius:16px;padding:4px 18px;margin:14px 0}
+details.guide summary{cursor:pointer;font-weight:700;padding:12px 0;list-style:none;display:flex;align-items:center;gap:8px}
+details.guide summary::-webkit-details-marker{display:none}
+details.guide summary::before{content:"🧭";font-size:16px}details.guide[open] summary::before{content:"🗺️"}
+.steps{display:grid;gap:6px;margin:6px 0 16px}
+.step{display:flex;gap:10px;align-items:flex-start;background:linear-gradient(90deg,rgba(244,217,160,.10),transparent);border-left:3px solid var(--gold);border-radius:0 9px 9px 0;padding:7px 12px}
+.step b{color:var(--gold);font-family:var(--font-mono)}
+.mogejo{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin:8px 0 4px}
+.mogejo div{background:var(--glass);border:1px solid var(--glass-line);border-radius:14px;padding:10px 12px;text-align:center}
+.mogejo .k{font-size:24px;font-family:var(--font-display);color:var(--biolume-mint)}.mogejo small{color:var(--pearl-dim)}
+
+/* 問題バナー */
+.problem-banner{border:1px solid var(--gold);background:rgba(244,217,160,.08);border-radius:16px;padding:12px 16px;margin:8px 0 0}
+.problem-banner .eyebrow{color:var(--gold)}
+
+/* なぜなぜ：潜水ベルと舷窓 */
+.dive-wrap{position:relative;display:flex;gap:14px}
+.dive-gauge{position:relative;width:46px;flex:0 0 46px;padding-top:6px}
+.dive-rail{position:absolute;left:21px;top:8px;bottom:8px;width:3px;border-radius:3px;background:linear-gradient(180deg,var(--biolume-mint),var(--biolume-violet),var(--biolume-coral));opacity:.5}
+.dive-bell{position:absolute;left:50%;top:0;transform:translateX(-50%);text-align:center;transition:top .35s cubic-bezier(.4,1.4,.5,1);z-index:2}
+.dive-bell .bell{font-size:26px;display:block;filter:drop-shadow(0 0 8px var(--biolume-mint));animation:bob 3.4s ease-in-out infinite}
+@keyframes bob{0%,100%{transform:translateY(0)}50%{transform:translateY(4px)}}
+.dive-bell .depth{display:block;font-family:var(--font-mono);font-size:10px;color:var(--gold);margin-top:2px;white-space:nowrap}
+#whyZone{flex:1;min-width:0}
+.depth-note{display:flex;justify-content:space-between;font-family:var(--font-mono);font-size:11px;color:var(--pearl-dim);letter-spacing:.1em;margin:2px 4px 12px}
+.why-node{position:relative;margin:10px 0}
+.why-inner{position:relative;border:1px solid var(--glass-line);border-radius:16px;padding:12px 13px;background:rgba(2,11,28,calc(.34 + var(--d,0) * .11))}
+.why-inner::before{content:"";position:absolute;top:14px;right:14px;width:11px;height:11px;border-radius:50%;border:1.5px solid var(--porthole);box-shadow:inset 0 0 4px rgba(244,217,160,.3);opacity:.6}
+.why-head{display:flex;align-items:center;gap:9px;margin-bottom:7px;flex-wrap:wrap}
+.depth-badge{display:inline-grid;place-items:center;min-width:54px;height:30px;padding:0 9px;border-radius:10px;font-family:var(--font-mono);font-weight:800;font-size:12px;color:#06283a;background:linear-gradient(135deg,var(--biolume-mint),var(--biolume-mint2));box-shadow:0 0 12px rgba(123,243,223,.3)}
+.depth-badge.deep{background:linear-gradient(135deg,var(--biolume-coral),var(--biolume-violet));color:#2a1330;box-shadow:0 0 12px rgba(184,156,230,.35)}
+.why-children{margin:8px 0 0 0;padding-left:18px;border-left:2px dotted rgba(123,243,223,.35)}
+.why-because{font-size:11px;color:var(--pearl-dim);font-family:var(--font-mono);margin:0 0 2px 2px}
+.why-memo{margin-top:8px}
+.why-memo textarea{min-height:38px;font-size:13px;background:rgba(244,217,160,.06);border-color:rgba(244,217,160,.3)}
+.memo-label{font-size:11px;color:var(--gold);font-family:var(--font-mono);margin:0 0 3px 2px}
+.ai-suggest{margin-top:8px;display:grid;gap:6px}
+.ai-chip{text-align:left;font-size:13.5px;border-radius:11px;padding:8px 12px;cursor:pointer;background:rgba(123,243,223,.10);border:1px solid rgba(123,243,223,.35);color:var(--pearl)}
+.ai-chip:hover{background:rgba(123,243,223,.2)}.ai-chip b{color:var(--biolume-mint);font-family:var(--font-mono);margin-right:6px}
+
+/* 海底 */
+.seabed{background:linear-gradient(180deg,rgba(2,11,28,.55),rgba(2,11,28,.85));border-color:rgba(244,217,160,.4)}
+.seabed::before{content:"🪸";position:absolute;left:18px;bottom:14px;font-size:24px;opacity:.5;filter:drop-shadow(0 0 8px var(--biolume-coral))}
+.seabed h2::after{content:" ⚓"}
+.angler{position:absolute;right:22px;bottom:18px;font-size:22px;filter:drop-shadow(0 0 10px var(--biolume-mint));animation:float 9s ease-in-out infinite;opacity:.6}
+
+/* 出力 */
+#outArea{width:100%;min-height:200px;font-family:var(--font-mono);font-size:13px;background:#020c1d;border:1px solid var(--glass-line);border-radius:13px;padding:14px;color:var(--biolume-mint);white-space:pre;overflow:auto;line-height:1.7}
+.toast{position:fixed;left:50%;bottom:26px;transform:translateX(-50%) translateY(20px);background:var(--biolume-mint);color:#06283a;font-weight:700;font-size:14px;padding:11px 20px;border-radius:13px;box-shadow:var(--shadow);opacity:0;pointer-events:none;transition:all .25s ease;z-index:50}
+.toast.show{opacity:1;transform:translateX(-50%) translateY(0)}.toast.err{background:#ffb09c}
+
+.save-status{font-family:var(--font-mono);font-size:11px;color:var(--pearl-dim);margin:0 0 8px 2px}
+.save-status.ok{color:var(--biolume-mint)}
+/* エラーログ */
+.logcard summary::before{content:"🐞"!important}
+.logcard[open] summary::before{content:"🐞"!important}
+.badge-n{font-family:var(--font-mono);font-size:11px;background:var(--glass);border:1px solid var(--glass-line);border-radius:999px;padding:0 8px;margin-left:6px}
+.log-body{max-height:260px;overflow:auto;font-family:var(--font-mono);font-size:12px;background:#020c1d;border:1px solid var(--glass-line);border-radius:10px;padding:8px}
+.log-line{padding:4px 2px;border-bottom:1px solid rgba(255,255,255,.06);white-space:pre-wrap;word-break:break-word}
+.lg-t{color:var(--pearl-dim)}.lg-w{color:var(--gold)}
+.lg-err b{color:#ff8a7a}.lg-warn b{color:var(--gold)}.lg-info b{color:var(--biolume-mint)}
+.lg-d{color:var(--pearl-dim);margin-top:2px}
+.bug-badge{display:none;position:fixed;left:14px;bottom:20px;z-index:55;align-items:center;gap:6px;cursor:pointer;
+  background:#ff8a7a;color:#2a0f0a;font-weight:800;border:none;border-radius:999px;padding:8px 13px;box-shadow:var(--shadow);font-size:14px;font-family:var(--font-body)}
+.bug-badge:hover{filter:brightness(1.05)}
+footer{text-align:center;color:var(--pearl-dim);font-size:12px;margin-top:42px}footer .rabbit{font-size:18px}
+.spin{display:inline-block;width:13px;height:13px;border:2px solid rgba(255,255,255,.4);border-top-color:#fff;border-radius:50%;animation:sp .7s linear infinite}
+@keyframes sp{to{transform:rotate(360deg)}}
+
+@media (max-width:560px){
+  .mogejo{grid-template-columns:1fr}.card{padding:22px 16px}.why-children{padding-left:12px}
+  .dive-gauge{width:34px;flex-basis:34px}.dive-rail{left:15px}.watcher{width:54px;top:6px;right:8px}
+}
+@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+
+/* ========== 印刷（PDF）用：清書レポート ========== */
+#printReport{display:none}
+@media print{
+  body{background:#fff!important;color:#16263b!important}
+  .sea-glow,.bubbles,.sparkles,.swimzone,.jelly,.watcher,.wrap,.toast{display:none!important}
+  #printReport{display:block!important;max-width:760px;margin:0 auto;padding:0;color:#16263b;font-family:var(--font-body)}
+  #printReport h1{font-size:22px;border-bottom:3px solid #FF9E7D;padding-bottom:6px;margin:0 0 4px}
+  #printReport .meta{color:#6b7c93;font-size:12px;margin-bottom:18px;font-family:var(--font-mono)}
+  #printReport h2{font-size:15px;color:#0A2547;border-left:5px solid #39C9B8;padding-left:9px;margin:20px 0 8px}
+  #printReport .kv{margin:3px 0}#printReport .kv b{display:inline-block;min-width:7em;color:#0A2547}
+  #printReport .prob{background:#FFF6EC;border:1px solid #F4D9A0;border-radius:8px;padding:8px 12px}
+  #printReport ul{margin:4px 0;padding-left:20px}#printReport li{margin:3px 0}
+  #printReport .memo{color:#8a6d2f;font-size:12px}
+  #printReport .root{background:#F0FBF8;border:1px solid #39C9B8;border-radius:8px;padding:8px 12px}
+  #printReport .foot{margin-top:24px;border-top:1px dashed #ccd6e2;padding-top:8px;color:#94a3b5;font-size:11px;text-align:center}
+  @page{margin:16mm}
+}
+</style>
+</head>
+<body>
+<div class="sea-glow" aria-hidden="true"><div class="rays"></div><div class="blob b1"></div><div class="blob b2"></div><div class="blob b3"></div></div>
+<div class="bubbles" id="bubbles" aria-hidden="true"></div>
+<div class="sparkles" id="sparkles" aria-hidden="true"></div>
+<div class="swimzone" id="swimzone" aria-hidden="true"></div>
+<div class="jelly j1" aria-hidden="true">🪼</div><div class="jelly j2" aria-hidden="true">🪼</div><div class="jelly j3" aria-hidden="true">🪼</div>
+
+<!-- うさぎの観覧船（見守る） -->
+<svg class="watcher" viewBox="0 0 120 90" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+  <ellipse cx="60" cy="44" rx="13" ry="16" fill="#FBF6EE"/>
+  <ellipse cx="54" cy="24" rx="4" ry="13" fill="#FBF6EE" transform="rotate(-12 54 24)"/>
+  <ellipse cx="66" cy="24" rx="4" ry="13" fill="#FBF6EE" transform="rotate(12 66 24)"/>
+  <ellipse cx="54" cy="24" rx="1.6" ry="8" fill="#FFB9C4" transform="rotate(-12 54 24)"/>
+  <ellipse cx="66" cy="24" rx="1.6" ry="8" fill="#FFB9C4" transform="rotate(12 66 24)"/>
+  <circle cx="55" cy="42" r="1.7" fill="#2a1c2e"/><circle cx="65" cy="42" r="1.7" fill="#2a1c2e"/>
+  <circle cx="60" cy="46" r="1.5" fill="#FFB9C4"/>
+  <path d="M16 56 L104 56 L92 74 L28 74 Z" fill="#F4D9A0" stroke="#caa45f" stroke-width="2"/>
+  <path d="M10 76 Q24 70 38 76 T66 76 T94 76 T122 76" stroke="#7BF3DF" stroke-width="2.4" fill="none" opacity=".8"/>
+</svg>
+
+<div class="wrap">
+  <header>
+    <svg class="boat" viewBox="0 0 140 96" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+      <!-- 帆 -->
+      <rect x="68" y="20" width="3" height="40" fill="#caa45f"/>
+      <path d="M71 22 L100 50 L71 50 Z" fill="#FF9E7D"/>
+      <path d="M68 24 L42 50 L68 50 Z" fill="#7BF3DF"/>
+      <!-- うさぎ（乗船） -->
+      <ellipse cx="54" cy="52" rx="9" ry="11" fill="#FBF6EE"/>
+      <ellipse cx="50" cy="38" rx="2.8" ry="9" fill="#FBF6EE" transform="rotate(-12 50 38)"/>
+      <ellipse cx="58" cy="38" rx="2.8" ry="9" fill="#FBF6EE" transform="rotate(12 58 38)"/>
+      <circle cx="51" cy="51" r="1.3" fill="#2a1c2e"/><circle cx="57" cy="51" r="1.3" fill="#2a1c2e"/>
+      <!-- 船体 -->
+      <path d="M18 64 L122 64 L108 82 L32 82 Z" fill="#F4D9A0" stroke="#caa45f" stroke-width="2"/>
+      <circle cx="50" cy="73" r="2" fill="#02101f"/><circle cx="70" cy="73" r="2" fill="#02101f"/><circle cx="90" cy="73" r="2" fill="#02101f"/>
+      <path d="M8 84 Q24 78 40 84 T72 84 T104 84 T136 84" stroke="#7BF3DF" stroke-width="2" fill="none" opacity=".7"/>
+    </svg>
+    <div class="brand-sub">Usausa Training Studio 🐰</div>
+    <h1>なぜなぜ分析ジェネレーター <span style="color:var(--gold)">PRO</span></h1>
+    <div class="voyage-sub">― 深海への航海日誌 ―</div>
+    <p class="tagline">海面で枠を決め、潜って海底の真因（宝）をさがす旅 ／ <b>面白きこともなき世を面白く</b></p>
+  </header>
+
+  <details class="guide">
+    <summary>航海のしおり（もげじょ＋ゴール設定の5ステップ）</summary>
+    <p class="hint" style="margin-top:0">まず「もげじょ」で状況を整え、ゴールを決めてから、なぜなぜで深く潜って根本原因をさがします。</p>
+    <div class="mogejo"><div><div class="k">も</div><small>目的</small></div><div><div class="k">げ</div><small>現状</small></div><div><div class="k">じょ</div><small>条件</small></div></div>
+    <p class="hint">ゴール設定は下から積み上げる5ステップ（階段）で。</p>
+    <div class="steps">
+      <div class="step"><b>1</b><span>言葉を定義する（あいまいな言葉を先に固める）</span></div>
+      <div class="step"><b>2</b><span>目的・ゴール・対象を決める</span></div>
+      <div class="step"><b>3</b><span>主語＋動詞でステップを書く</span></div>
+      <div class="step"><b>4</b><span>気を付けることを全部書く</span></div>
+      <div class="step"><b>5</b><span>完了条件と期限を決める</span></div>
+    </div>
+    <p class="hint" style="margin-bottom:8px">※ AIボタン（✨）はClaude内で動かしているときだけ使えます。オフラインでも手入力で全機能が動きます。</p>
+  </details>
+
+  <div class="horizon"><span>― 海面 ―</span></div>
+
+  <!-- ① 枠組み -->
+  <section class="card" id="frameCard">
+    <span class="eyebrow"><span class="num">1</span> 出航のしたく ／ AT THE SURFACE</span>
+    <h2>もげじょ＋ゴール設定</h2>
+    <p class="hint">潜る前に、現状とありたい姿の「ズレ」を言葉にします。</p>
+    <div class="field"><label>分析のタイトル <span class="desc">例：研修中の進捗遅れ</span></label><input type="text" id="f_title" placeholder="何についての なぜなぜ分析か"></div>
+    <div class="field"><label>📅 作成日 <span class="desc">起動時に今日の日付を自動入力（必要なら変更できます）</span></label><input type="date" id="f_date" style="color-scheme:dark;max-width:220px"></div>
+    <div class="field"><label>言葉の定義 <span class="desc">あいまいな言葉を先に固める（任意）</span></label><textarea id="f_define" placeholder="例：「遅れ」＝予定より2日以上ずれている状態 など"></textarea></div>
+    <div class="field"><label>目的<span class="tag">も</span><span class="desc">なぜこの分析をやるのか</span></label><textarea id="f_purpose" placeholder="例：同じ遅れを次の研修で繰り返さないため"></textarea></div>
+    <div class="field"><label>現状<span class="tag">げ</span><span class="desc">いま実際に起きていること（事実で）</span></label><textarea id="f_current" placeholder="例：Linux演習で受講生の半数が制限時間内に終わらなかった"></textarea></div>
+    <div class="field"><label>条件・制約<span class="tag">じょ</span><span class="desc">前提・縛り（任意）</span></label><textarea id="f_cond" placeholder="例：研修は全5日／講師は2名／カリキュラム変更は不可"></textarea></div>
+    <div class="field"><label>目標状態 <span class="desc">どういう状態に持っていきたいか（ありたい姿）</span></label><textarea id="f_goal" placeholder="例：受講生の9割が時間内に演習を完了し、つまずきは即質問できている"></textarea></div>
+    <div class="row end"><button class="btn ai" id="btnFrame">✨ 現状とのズレから問題文を作る</button></div>
+    <div class="problem-banner" style="margin-top:16px"><span class="eyebrow">🗺️ 解くべき問題（潜りはじめる地点）</span><textarea id="f_problem" placeholder="例：なぜ受講生の半数が演習を時間内に終えられないのか"></textarea></div>
+  </section>
+
+  <div class="horizon" style="margin-top:34px"><span>― 潜水開始 ／ DIVE ―</span></div>
+
+  <!-- ② なぜなぜ -->
+  <section class="card" id="whyCard">
+    <span class="eyebrow"><span class="num">2</span> 深く潜る ／ DIVE DEEPER</span>
+    <h2>なぜなぜ分析</h2>
+    <p class="hint">「なぜ？」を繰り返し、事実ベースで深く潜ります。各「なぜ」に📝補足メモ（確認事項・根拠）を残せます。</p>
+    <div class="depth-note"><span>🌊 浅瀬（症状）</span><span>潜るほど真因に近づく</span><span>⚓ 海底（根っこ）</span></div>
+    <div class="dive-wrap">
+      <div class="dive-gauge" aria-hidden="true"><div class="dive-rail"></div><div class="dive-bell" id="diveBell"><span class="bell">🛎️</span><span class="depth" id="depthLabel">0m</span></div></div>
+      <div id="whyZone"></div>
+    </div>
+    <div class="row" style="margin-top:12px"><button class="btn mint sm" id="btnAddTop">🫧 最初の「なぜ」</button><span class="spacer"></span><button class="btn ghost sm" id="btnClearWhy">なぜをすべて消す</button></div>
+  </section>
+
+  <!-- ③ 真因と対策 -->
+  <section class="card seabed" id="rootCard">
+    <span class="eyebrow"><span class="num">3</span> 海底の宝 ／ THE SEABED</span>
+    <h2>根本原因と打ち手</h2>
+    <p class="hint">掘り切ったところが真因。目標状態に戻れる対策まで書きます。</p>
+    <div class="field"><label>真因（根本原因）</label><textarea id="r_root" placeholder="例：演習前の前提知識チェックがなく、つまずきを早期に拾えていない"></textarea></div>
+    <div class="field"><label>対策 <span class="desc">真因をつぶし、目標状態に近づける打ち手</span></label><textarea id="r_action" placeholder="例：演習開始前に3分の前提クイズ→できなければ即フォロー"></textarea></div>
+    <div class="field"><label>📝 全体メモ <span class="desc">気づき・申し送り・宿題など（任意）</span></label><textarea id="f_memo" placeholder="例：次回は演習時間を10分延長して再検証する／講師間で前提クイズを共有"></textarea></div>
+    <div class="row end"><button class="btn ai" id="btnLogic">✨ ロジック点検（飛躍チェック）</button><button class="btn ai" id="btnRoot">✨ 真因と対策を提案</button></div>
+    <span class="angler" aria-hidden="true">🐡</span>
+  </section>
+
+  <!-- ★ MBAレベル分析 -->
+  <section class="card" id="mbaCard">
+    <span class="eyebrow"><span class="num">★</span> MBAレベル分析 ／ STRATEGIC</span>
+    <h2>🎓 MBAレベル分析</h2>
+    <p class="hint">なぜなぜの内容を、SCQ・ロジックツリー(MECE/4M)・真因の妥当性・打ち手の優先順位(インパクト×実行容易性)・KPI・90日実行計画まで引き上げます。</p>
+    <div class="row end" style="margin-bottom:10px"><button class="btn ai" id="btnMba">🎓 MBA分析を生成</button></div>
+    <div class="field"><label>分析結果 <span class="desc">編集できます。MD/PDF/CSV/JSONの出力にも含まれます</span></label><textarea id="f_mba" style="min-height:170px" placeholder="「🎓 MBA分析を生成」を押すと、ここに構造化された分析が入ります（編集可）"></textarea></div>
+  </section>
+
+  <!-- ④ 出力 -->
+  <section class="card" id="outCard">
+    <span class="eyebrow"><span class="num">4</span> 航海日誌に記す ／ EXPORT</span>
+    <h2>出力（Notion / PDF / CSV）</h2>
+    <div class="row" style="margin-bottom:12px">
+      <button class="btn mint sm" id="btnGen">プレビュー</button>
+      <button class="btn sm" id="btnCopy">📋 コピー(MD)</button>
+      <button class="btn sm" id="btnMd">⬇ .md</button>
+      <button class="btn sm" id="btnPdf">📄 PDF</button>
+      <button class="btn sm" id="btnCsv">📊 CSV</button>
+      <span class="spacer"></span>
+      <button class="btn ghost sm" id="btnSave">💾 下書き(JSON)</button>
+      <button class="btn ghost sm" id="btnLoad">📥 取り込み(JSON/CSV)</button>
+      <button class="btn ghost sm" id="btnNew">🆕 新規</button>
+      <input type="file" id="fileInput" accept=".json,.csv" hidden>
+    </div>
+    <div id="saveStatus" class="save-status">💾 自動保存：待機中（入力すると自動で保存します）</div>
+    <div id="outArea" contenteditable="false">プレビュー を押すと、Markdownがここに表示されます。</div>
+  </section>
+
+  <details class="guide logcard" id="logDetails">
+    <summary>エラーログ <span id="logCount" class="badge-n">0</span></summary>
+    <p class="hint" style="margin-top:0">不具合が起きたとき、ここに自動で記録されます。コピー／保存して共有できます（環境情報つき）。</p>
+    <div class="row" style="margin-bottom:8px">
+      <button class="btn sm" id="btnLogCopy">📋 ログをコピー</button>
+      <button class="btn sm" id="btnLogSave">⬇ ログ保存(.txt)</button>
+      <span class="spacer"></span>
+      <button class="btn ghost sm" id="btnLogClear">🗑 クリア</button>
+    </div>
+    <div id="logBody" class="log-body"></div>
+  </details>
+
+  <footer><div class="rabbit">🐰</div>うさうさ研修工房 ／ なぜなぜ分析ジェネレーター PRO v1.6.0<br>自動保存・エラーログつき・オフラインでも動きます（AI機能はClaude内のみ）</footer>
+</div>
+
+<!-- 印刷（PDF）用の清書エリア -->
+<div id="printReport"></div>
+
+<button class="bug-badge" id="bugBadge" title="エラーログを開く"><span>🐞</span><span id="bugCount">0</span></button>
+<div class="toast" id="toast"></div>
+
+<script>
+"use strict";
+
+/* ===== 状態 ===== */
+let whys = [];           // {id, text, memo, _memoOpen, children:[]}
+let uid = 0;
+const nid = () => "n" + (++uid);
+const $ = s => document.querySelector(s);
+
+/* ===== エラーログ（バグを自動記録） ===== */
+let _logs=[];
+function nowStamp(){ const n=new Date(),p=x=>String(x).padStart(2,"0");
+  return n.getFullYear()+"-"+p(n.getMonth()+1)+"-"+p(n.getDate())+" "+p(n.getHours())+":"+p(n.getMinutes())+":"+p(n.getSeconds()); }
+function storageMode(){ if(window.storage&&window.storage.set) return "window.storage";
+  try{ localStorage.setItem("__t","1"); localStorage.removeItem("__t"); return "localStorage"; }catch(e){ return "なし(保存不可)"; } }
+function logEvent(level, where, msg, detail){
+  const e={t:nowStamp(),level:level||"INFO",where:where||"-",msg:String(msg==null?"":msg),detail:detail?String(detail):""};
+  _logs.push(e); if(_logs.length>300) _logs.shift();
+  try{ (e.level==="ERROR"?console.error:e.level==="WARN"?console.warn:console.log)("["+e.level+"]",e.where,e.msg,e.detail||""); }catch(_){}
+  try{ renderLog(); }catch(_){}
+  if(e.level==="ERROR"){
+    try{ toast("⚠ エラーを記録しました（左下の🐞／プレビュー欄に全文）",true); }catch(_){}
+    try{ const oa=$("#outArea"); if(oa){ oa.textContent="⚠ 重大エラーが発生しました（全文ログ）\n\n"+logText(); oa.scrollIntoView({behavior:"smooth",block:"center"}); } }catch(_){}
+  }
+}
+function errCount(){ return _logs.filter(l=>l.level==="ERROR").length; }
+function renderLog(){
+  const body=$("#logBody"); 
+  const ec=errCount(), b=$("#bugBadge");
+  if(b){ b.style.display=ec?"inline-flex":"none"; const c=$("#bugCount"); if(c) c.textContent=ec; }
+  const cnt=$("#logCount"); if(cnt) cnt.textContent=_logs.length;
+  if(!body) return;
+  if(!_logs.length){ body.innerHTML='<p class="hint" style="opacity:.7;margin:6px 0">まだログはありません。エラーが起きると、ここに記録されます。</p>'; return; }
+  body.innerHTML=_logs.slice().reverse().map(l=>{
+    const cls=l.level==="ERROR"?"lg-err":l.level==="WARN"?"lg-warn":"lg-info";
+    return '<div class="log-line '+cls+'"><span class="lg-t">'+escapeHtml(l.t)+'</span> <b>['+l.level+']</b> <span class="lg-w">'+escapeHtml(l.where)+'</span> '+escapeHtml(l.msg)+(l.detail?'<div class="lg-d">'+escapeHtml(l.detail)+'</div>':'')+'</div>';
+  }).join("");
+}
+function logText(){
+  const head="うさうさ なぜなぜ分析ジェネレーター PRO v1.6.0 エラーログ\n出力日時："+nowStamp()+
+    "\n保存先："+storageMode()+"\nUserAgent："+(navigator.userAgent||"-")+
+    "\n画面："+window.innerWidth+"x"+window.innerHeight+"\n----------------------------------------\n";
+  if(!_logs.length) return head+"（ログなし）\n";
+  return head+_logs.map(l=>l.t+" ["+l.level+"] "+l.where+" "+l.msg+(l.detail?"\n    "+l.detail.replace(/\n/g,"\n    "):"")).join("\n")+"\n";
+}
+window.addEventListener("error",ev=>{
+  if(ev&&(ev.message||ev.error)) logEvent("ERROR","window.onerror",ev.message||(ev.error&&ev.error.message),
+    (ev.filename||"")+":"+(ev.lineno||"")+":"+(ev.colno||"")+(ev.error&&ev.error.stack?"\n"+ev.error.stack:""));
+});
+window.addEventListener("unhandledrejection",ev=>{
+  const r=ev&&ev.reason; logEvent("ERROR","unhandledrejection",(r&&r.message)||String(r),(r&&r.stack)||"");
+});
+
+/* ===== 装飾：泡・きらきら・魚・亀 ===== */
+(function decorate(){
+  // 泡
+  const bb=$("#bubbles");
+  for(let i=0;i<14;i++){ const b=document.createElement("span"); b.className="bubble";
+    const s=4+Math.random()*16; b.style.width=b.style.height=s+"px";
+    b.style.left=Math.random()*100+"vw"; b.style.animationDuration=(10+Math.random()*14)+"s";
+    b.style.animationDelay=(-Math.random()*14)+"s"; bb.appendChild(b); }
+  // きらきら
+  const sp=$("#sparkles"); const marks=["✦","✧","⋆","✨"];
+  for(let i=0;i<16;i++){ const s=document.createElement("span"); s.className="sparkle";
+    s.textContent=marks[i%marks.length]; s.style.left=Math.random()*100+"vw";
+    s.style.top=(Math.random()*70)+"vh"; s.style.fontSize=(9+Math.random()*10)+"px";
+    s.style.animationDuration=(2.4+Math.random()*3)+"s"; s.style.animationDelay=(-Math.random()*5)+"s";
+    sp.appendChild(s); }
+  // 泳ぐ魚
+  const zone=$("#swimzone"); const fishEmoji=["🐟","🐠","🐡","🐟","🐠"];
+  for(let i=0;i<6;i++) spawnFish(zone,fishEmoji[i%fishEmoji.length],true);
+  // ときどき亀
+  setTimeout(()=>spawnTurtle(zone),4000);
+  setInterval(()=>spawnTurtle(zone), 22000 + Math.random()*12000);
+})();
+
+function spawnFish(zone, emoji, loop){
+  const f=document.createElement("div"); f.className="fish";
+  const toLeft=Math.random()<0.5;
+  const top=6+Math.random()*82; f.style.top=top+"vh";
+  const size=16+Math.random()*20; 
+  const dur=14+Math.random()*16;
+  f.style.animation=(toLeft?"swimL":"swimR")+" "+dur+"s linear "+(loop?"infinite":"1")+" "+(-Math.random()*dur)+"s";
+  const body=document.createElement("span"); body.className="body";
+  body.textContent=emoji; body.style.fontSize=size+"px";
+  // 🐟は左向きが既定。左へ進むなら等倍、右へ進むなら反転。
+  body.style.transform="scaleX("+(toLeft?1:-1)+")";
+  f.appendChild(body); zone.appendChild(f);
+}
+function spawnTurtle(zone){
+  const t=document.createElement("div"); t.className="fish";
+  const toLeft=Math.random()<0.5;
+  t.style.top=(30+Math.random()*55)+"vh";
+  const dur=30+Math.random()*16;
+  t.style.animation=(toLeft?"swimL":"swimR")+" "+dur+"s linear 1";
+  const body=document.createElement("span"); body.className="body";
+  body.textContent="🐢"; body.style.fontSize=(26+Math.random()*8)+"px";
+  body.style.transform="scaleX("+(toLeft?1:-1)+")";
+  t.appendChild(body); zone.appendChild(t);
+  setTimeout(()=>t.remove(), dur*1000+500);
+}
+
+/* ===== トースト ===== */
+function toast(msg, isErr){ const t=$("#toast"); t.textContent=msg; t.className="toast show"+(isErr?" err":"");
+  clearTimeout(t._t); t._t=setTimeout(()=>t.className="toast",2200); }
+
+/* ===== 潜水ベルの深度 ===== */
+function maxDepth(){ let m=0; (function w(list,d){ list.forEach(n=>{ if(d>m)m=d; w(n.children,d+1); }); })(whys,1); return m; }
+function updateGauge(){ const d=maxDepth(); $("#diveBell").style.top=Math.min(d,8)*40+"px";
+  $("#depthLabel").textContent = d===0?"0m":"-"+(d*10)+"m"; }
+
+/* ===== なぜツリー描画 ===== */
+function renderWhys(){
+  const zone=$("#whyZone"); zone.innerHTML="";
+  if(whys.length===0){ zone.innerHTML='<p class="hint" style="text-align:center;opacity:.7">まだ「なぜ」がありません。下のボタンから潜りはじめましょう。</p>'; updateGauge(); scheduleSave(); return; }
+  whys.forEach(n=>zone.appendChild(nodeEl(n,1))); updateGauge(); scheduleSave();
+}
+function nodeEl(node, depth){
+  const wrap=document.createElement("div"); wrap.className="why-node";
+  const inner=document.createElement("div"); inner.className="why-inner"; inner.style.setProperty("--d",Math.min(depth,5));
+  const head=document.createElement("div"); head.className="why-head";
+  const badge=document.createElement("span"); badge.className="depth-badge"+(depth>=4?" deep":""); badge.textContent="なぜ"+depth; head.appendChild(badge);
+  const aiBtn=mkBtn("✨ 候補","btn ai sm"); aiBtn.onclick=()=>suggestWhy(node,depth,aiBtn);
+  const childBtn=mkBtn("↓ さらに潜る","btn mint sm"); childBtn.onclick=()=>{ node.children.push(newNode()); renderWhys(); };
+  const sibBtn=mkBtn("⑂ 枝（別の原因）","btn ghost sm"); sibBtn.onclick=()=>addSibling(node);
+  const memoBtn=mkBtn(node._memoOpen||(node.memo&&node.memo.trim())?"📝 メモを閉じる":"📝 メモ","btn ghost sm");
+  memoBtn.onclick=()=>{ node._memoOpen=!node._memoOpen; renderWhys(); };
+  const delBtn=mkBtn("削除","btn danger sm"); delBtn.onclick=()=>{ removeNode(node.id); renderWhys(); };
+  head.appendChild(spacer()); head.appendChild(aiBtn); inner.appendChild(head);
+
+  const because=document.createElement("div"); because.className="why-because"; because.textContent="↳ なぜなら…"; inner.appendChild(because);
+  const ta=document.createElement("textarea"); ta.value=node.text||""; ta.placeholder="事実ベースで「なぜなら〜だから」と書く"; ta.oninput=e=>{node.text=e.target.value;scheduleSave();}; inner.appendChild(ta);
+
+  const actions=document.createElement("div"); actions.className="row"; actions.style.marginTop="8px";
+  actions.append(childBtn,sibBtn,memoBtn,spacer(),delBtn); inner.appendChild(actions);
+
+  if(node._memoOpen || (node.memo&&node.memo.trim())){
+    const mwrap=document.createElement("div"); mwrap.className="why-memo";
+    const ml=document.createElement("div"); ml.className="memo-label"; ml.textContent="📝 補足メモ（確認事項・根拠など）";
+    const mta=document.createElement("textarea"); mta.value=node.memo||""; mta.placeholder="例：ログで未確認／受講生3名にヒアリング要"; mta.oninput=e=>{node.memo=e.target.value;scheduleSave();};
+    mwrap.append(ml,mta); inner.appendChild(mwrap);
+  }
+
+  const sg=document.createElement("div"); sg.className="ai-suggest"; sg.id="sg-"+node.id; inner.appendChild(sg);
+  wrap.appendChild(inner);
+  if(node.children.length){ const kids=document.createElement("div"); kids.className="why-children"; node.children.forEach(c=>kids.appendChild(nodeEl(c,depth+1))); wrap.appendChild(kids); }
+  return wrap;
+}
+function newNode(){ return {id:nid(),text:"",memo:"",_memoOpen:false,children:[]}; }
+function mkBtn(label,cls){ const b=document.createElement("button"); b.className=cls; b.textContent=label; return b; }
+function spacer(){ const s=document.createElement("span"); s.className="spacer"; return s; }
+
+function addSibling(target){
+  if(whys.some(n=>n.id===target.id)){ whys.push(newNode()); renderWhys(); return; }
+  (function walk(list){ for(const n of list){ if(n.children.some(c=>c.id===target.id)){ n.children.push(newNode()); return true; } if(walk(n.children)) return true; } return false; })(whys);
+  renderWhys();
+}
+function removeNode(id){ whys=whys.filter(n=>n.id!==id);
+  (function walk(list){ list.forEach(n=>{ n.children=n.children.filter(c=>c.id!==id); walk(n.children); }); })(whys); }
+function chainTo(id){ const path=[]; (function walk(list){ for(const n of list){ path.push(n); if(n.id===id) return true; if(walk(n.children)) return true; path.pop(); } return false; })(whys); return path; }
+
+/* ===== AI（Claude in Claude） ===== */
+async function callClaude(prompt, system){
+  const res=await fetch("https://api.anthropic.com/v1/messages",{method:"POST",headers:{"Content-Type":"application/json"},
+    body:JSON.stringify({model:"claude-sonnet-4-6",max_tokens:1000,system:system||"",messages:[{role:"user",content:prompt}]})});
+  if(!res.ok) throw new Error("api "+res.status);
+  const data=await res.json();
+  return data.content.filter(b=>b.type==="text").map(b=>b.text).join("\n").trim();
+}
+function parseJson(text){ return JSON.parse(text.replace(/```json|```/g,"").trim()); }
+function val(id){ return ($("#"+id).value||"").trim(); }
+function loadGuard(btn){ btn.disabled=true; btn._h=btn.innerHTML; btn.innerHTML='<span class="spin"></span> 生成中'; }
+function loadEnd(btn){ btn.disabled=false; if(btn._h) btn.innerHTML=btn._h; }
+function aiErr(e){ toast("AIはClaude内でのみ使えます（オフライン時は手入力で）",true); logEvent("WARN","AI",(e&&e.message)||String(e),(e&&e.stack)||""); }
+
+async function genProblem(btn){
+  const cur=val("f_current"),goal=val("f_goal");
+  if(!cur||!goal){ toast("現状と目標状態を入れてください",true); return; }
+  loadGuard(btn);
+  try{
+    const sys="あなたは日本のIT研修講師の思考整理を助けるアシスタントです。なぜなぜ分析の出発点になる『解くべき問題文』を1文で作ります。出力はJSONのみ、前置きや```は禁止。";
+    const p=`次の情報から、なぜなぜ分析の出発点となる問題文を「なぜ〜なのか」の形で1文だけ作ってください。\n目的：${val("f_purpose")||"(未記入)"}\n現状：${cur}\n目標状態：${goal}\n条件：${val("f_cond")||"(未記入)"}\n出力形式（JSONのみ）：{"problem":"なぜ〜なのか"}`;
+    const o=parseJson(await callClaude(p,sys)); $("#f_problem").value=o.problem||""; toast("問題文を作りました");
+  }catch(e){ aiErr(e); } finally{ loadEnd(btn); }
+}
+async function suggestWhy(node, depth, btn){
+  const problem=val("f_problem"); if(!problem){ toast("先に『解くべき問題』を入れてください",true); return; }
+  loadGuard(btn);
+  try{
+    const chain=chainTo(node.id).map((n,i)=>`なぜ${i+1}：${n.text||"(空欄)"}`).join("\n");
+    const sys="あなたは日本のIT研修・障害分析のなぜなぜ分析を支援するアシスタントです。次の『なぜ』の候補を、事実ベースで論理が飛躍しないよう短く出します。出力はJSONのみ、前置きや```は禁止。";
+    const p=`解くべき問題：${problem}\nこれまでの掘り下げ：\n${chain}\n\n上の最後の「なぜ${depth}」に対する、ひとつ深い「なぜ（原因の候補）」を2〜3個、短文で提案してください。憶測でなく確認すべき観点として。\n出力形式（JSONのみ）：{"candidates":["候補1","候補2","候補3"]}`;
+    const o=parseJson(await callClaude(p,sys));
+    const sg=$("#sg-"+node.id); sg.innerHTML="";
+    (o.candidates||[]).forEach((c,i)=>{ const chip=document.createElement("div"); chip.className="ai-chip"; chip.innerHTML=`<b>候補${i+1}</b>${escapeHtml(c)}`;
+      chip.onclick=()=>{ if(node.text.trim()){ const nn=newNode(); nn.text=c; node.children.push(nn); } else { node.text=c; } renderWhys(); }; sg.appendChild(chip); });
+    if(!(o.candidates||[]).length) toast("候補が出ませんでした",true);
+  }catch(e){ aiErr(e); } finally{ loadEnd(btn); }
+}
+async function genRoot(btn){
+  const problem=val("f_problem"); if(!problem){ toast("先に『解くべき問題』を入れてください",true); return; }
+  loadGuard(btn);
+  try{
+    const sys="あなたは日本のIT研修・障害分析のアシスタントです。なぜなぜの連なりから真因と対策を提案します。出力はJSONのみ、前置きや```は禁止。";
+    const p=`解くべき問題：${problem}\n目標状態：${val("f_goal")||"(未記入)"}\nなぜなぜの連なり：\n${whysToText()||"(まだなし)"}\n\nこの内容から、最も深い「真因（根本原因）」を1つと、目標状態に近づくための具体的な「対策」を1つ提案してください。\n出力形式（JSONのみ）：{"root":"真因","action":"対策"}`;
+    const o=parseJson(await callClaude(p,sys)); if(o.root)$("#r_root").value=o.root; if(o.action)$("#r_action").value=o.action; toast("真因と対策の案を入れました");
+  }catch(e){ aiErr(e); } finally{ loadEnd(btn); }
+}
+async function checkLogic(btn){
+  if(!whysToText()){ toast("点検する「なぜ」がありません",true); return; }
+  loadGuard(btn);
+  try{
+    const sys="あなたは日本のなぜなぜ分析のレビュアーです。論理の飛躍・主観・原因と結果の取り違えを指摘し、改善観点を返します。出力はJSONのみ、前置きや```は禁止。";
+    const p=`解くべき問題：${val("f_problem")||"(未記入)"}\nなぜなぜの連なり：\n${whysToText()}\n\n論理の飛躍や主観的な決めつけ、つなぎの弱い箇所を2〜3点、やさしく指摘してください。\n出力形式（JSONのみ）：{"notes":["指摘1","指摘2"]}`;
+    const o=parseJson(await callClaude(p,sys));
+    const notes=(o.notes||[]).map((n,i)=>`${i+1}. ${n}`).join("\n\n");
+    $("#outArea").textContent="🔍 ロジック点検の結果\n\n"+(notes||"特に問題は見つかりませんでした。");
+    $("#outArea").scrollIntoView({behavior:"smooth",block:"center"}); toast("点検しました（下に表示）");
+  }catch(e){ aiErr(e); } finally{ loadEnd(btn); }
+}
+
+/* MBAレベル分析 */
+async function genMba(btn){
+  if(!val("f_problem") && !whysToText()){ toast("先に問題やなぜなぜを入れてください",true); return; }
+  loadGuard(btn);
+  try{
+    const sys="あなたはMBA(経営学修士)レベルの経営コンサルタントです。なぜなぜ分析の内容を、構造化された実務的な戦略分析へ引き上げます。日本語のMarkdownのみで出力し、コードフェンスや前置き・後置きは禁止。各節は要点を簡潔な箇条書きで、具体的に。";
+    const p=`# 入力\n目的：${val("f_purpose")||"-"}\n現状：${val("f_current")||"-"}\n条件：${val("f_cond")||"-"}\n目標状態：${val("f_goal")||"-"}\n解くべき問題：${val("f_problem")||"-"}\nなぜなぜ：\n${whysToMarkdown()||"-"}\n真因：${val("r_root")||"-"}\n対策：${val("r_action")||"-"}\n\n# 指示\n上記をもとに、次の見出しでMBAレベルの分析を作成してください。\n## 1. 問題の再定義（SCQ：状況/複雑化/問い）\n## 2. 構造化（MECEなロジックツリー、または4M：人/機械/材料/方法での整理）\n## 3. 真因の妥当性検証（事実・仮説・反証すべき点）\n## 4. 打ち手の評価と優先順位（インパクト×実行容易性で評価し、推奨順に）\n## 5. KPI・効果測定（先行指標／遅行指標）\n## 6. リスク・前提・モニタリング\n## 7. 実行計画（誰が・いつ・最初の90日）`;
+    const r=await callClaude(p,sys);
+    const text=r.replace(/```[a-z]*|```/g,"").trim();
+    $("#f_mba").value=text;
+    $("#outArea").textContent=text; $("#outArea").scrollIntoView({behavior:"smooth",block:"center"});
+    scheduleSave(); toast("MBAレベル分析を生成しました");
+  }catch(e){ aiErr(e); } finally{ loadEnd(btn); }
+}
+
+/* ===== テキスト化 ===== */
+function whysToText(){ const lines=[]; (function w(list,d){ list.forEach(n=>{ lines.push("  ".repeat(d-1)+"- なぜ"+d+"："+(n.text||"(空欄)")); w(n.children,d+1); }); })(whys,1); return lines.join("\n"); }
+function whysToMarkdown(){ const lines=[]; (function w(list,d){ list.forEach(n=>{ const pad="  ".repeat(d-1);
+  lines.push(pad+"- **なぜ"+d+"**："+(n.text||"—")); if(n.memo&&n.memo.trim()) lines.push(pad+"  - 📝 "+n.memo.replace(/\n/g," "));
+  w(n.children,d+1); }); })(whys,1); return lines.join("\n"); }
+
+/* ===== 日付 ===== */
+function todayIso(){ const n=new Date(),p=x=>String(x).padStart(2,"0"); return n.getFullYear()+"-"+p(n.getMonth()+1)+"-"+p(n.getDate()); }
+function fmtDate(iso){ if(!iso) iso=todayIso(); const m=/^(\d{4})-(\d{2})-(\d{2})$/.exec(iso); return m?(m[1]+"/"+m[2]+"/"+m[3]):iso; }
+function ensureDate(){ const el=$("#f_date"); if(el&&!el.value) el.value=todayIso(); }
+function dateTag(){ const iso=val("f_date")||todayIso(); const m=/^(\d{4})-(\d{2})-(\d{2})$/.exec(iso); return m?(m[1]+m[2]+m[3]):iso.replace(/[^\d]/g,""); }
+function safeName(s){ return (s||"").replace(/[\\/:*?"<>|\n\r\t]+/g,"_").replace(/\s+/g,"_").replace(/^_+|_+$/g,"").slice(0,60); }
+function fileBase(){ return dateTag()+"_"+(safeName(val("f_title"))||"naze2"); }
+
+function buildMarkdown(){
+  const t=val("f_title")||"（無題）";
+  let md=`# なぜなぜ分析：${t}\n\n`;
+  md+=`*作成日：${fmtDate(val("f_date"))}*\n\n`;
+  md+=`## 1. 枠組み（もげじょ＋ゴール）\n`;
+  md+=`- **言葉の定義**：${val("f_define")||"—"}\n- **目的（も）**：${val("f_purpose")||"—"}\n- **現状（げ）**：${val("f_current")||"—"}\n- **条件（じょ）**：${val("f_cond")||"—"}\n- **目標状態（ゴール）**：${val("f_goal")||"—"}\n\n`;
+  md+=`## 2. 解くべき問題\n${val("f_problem")||"—"}\n\n`;
+  md+=`## 3. なぜなぜ分析\n${whysToMarkdown()||"—"}\n\n`;
+  md+=`## 4. 真因（根本原因）\n${val("r_root")||"—"}\n\n`;
+  md+=`## 5. 対策\n${val("r_action")||"—"}\n`;
+  const memo=val("f_memo"); if(memo) md+=`\n## 6. メモ\n${memo}\n`;
+  const mba=val("f_mba"); if(mba) md+=`\n## 7. MBAレベル分析\n${mba}\n`;
+  return md;
+}
+function genOutput(){ $("#outArea").textContent=buildMarkdown(); toast("航海日誌を書きました"); }
+
+/* ===== CSV ===== */
+function csvCell(v){ v=(v==null?"":String(v)); return '"'+v.replace(/"/g,'""')+'"'; }
+function buildCsv(){
+  const rows=[["セクション","深度","項目","内容","メモ","経路"]];
+  rows.push(["枠組み","","タイトル",val("f_title"),"",""]);
+  rows.push(["枠組み","","作成日",fmtDate(val("f_date")),"",""]);
+  rows.push(["枠組み","","言葉の定義",val("f_define"),"",""]);
+  rows.push(["枠組み","","目的（も）",val("f_purpose"),"",""]);
+  rows.push(["枠組み","","現状（げ）",val("f_current"),"",""]);
+  rows.push(["枠組み","","条件（じょ）",val("f_cond"),"",""]);
+  rows.push(["枠組み","","目標状態",val("f_goal"),"",""]);
+  rows.push(["問題","","解くべき問題",val("f_problem"),"",""]);
+  (function w(list,d,path){ list.forEach((n,i)=>{ const here=path.concat("なぜ"+d);
+    rows.push(["なぜなぜ",String(d),"なぜ"+d,n.text||"",n.memo||"",here.join(">")]);
+    w(n.children,d+1,here); }); })(whys,1,[]);
+  rows.push(["真因","","根本原因",val("r_root"),"",""]);
+  rows.push(["対策","","打ち手",val("r_action"),"",""]);
+  rows.push(["メモ","","全体メモ",val("f_memo"),"",""]);
+  rows.push(["MBA分析","","MBAレベル分析",val("f_mba"),"",""]);
+  return "\uFEFF"+rows.map(r=>r.map(csvCell).join(",")).join("\r\n");
+}
+function exportCsv(){ download(new Blob([buildCsv()],{type:"text/csv;charset=utf-8"}),fileBase()+".csv"); toast("CSVを保存しました"); }
+
+/* ===== PDF（清書→印刷） ===== */
+function escapeHtml(s){ return (s==null?"":String(s)).replace(/[&<>"]/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[m])); }
+function mdLite(t){
+  const lines=String(t||"").split(/\n/); let html="",inUl=false;
+  const closeUl=()=>{ if(inUl){ html+="</ul>"; inUl=false; } };
+  lines.forEach(ln=>{ const s=ln.trim();
+    if(/^#{1,4}\s/.test(s)){ closeUl(); const lv=Math.min(s.match(/^#+/)[0].length+1,5); html+="<h"+lv+">"+escapeHtml(s.replace(/^#+\s/,""))+"</h"+lv+">"; }
+    else if(/^[-*]\s/.test(s)){ if(!inUl){ html+="<ul>"; inUl=true; } html+="<li>"+escapeHtml(s.replace(/^[-*]\s/,""))+"</li>"; }
+    else if(s===""){ closeUl(); }
+    else { closeUl(); html+="<p>"+escapeHtml(s)+"</p>"; }
+  }); closeUl(); return html;
+}
+function whysToHtmlList(list){
+  if(!list.length) return "";
+  let h="<ul>";
+  list.forEach(n=>{ h+="<li>"+escapeHtml(n.text||"—");
+    if(n.memo&&n.memo.trim()) h+=' <span class="memo">📝 '+escapeHtml(n.memo)+"</span>";
+    h+=whysToHtmlList(n.children)+"</li>"; });
+  return h+"</ul>";
+}
+function buildReportHtml(){
+  const t=escapeHtml(val("f_title")||"（無題）");
+  const ymd=fmtDate(val("f_date"));
+  let h=`<h1>なぜなぜ分析：${t}</h1><div class="meta">うさうさ研修工房 ／ 作成日 ${ymd}</div>`;
+  h+=`<h2>1. 枠組み（もげじょ＋ゴール）</h2>`;
+  h+=`<div class="kv"><b>言葉の定義</b>${escapeHtml(val("f_define")||"—")}</div>`;
+  h+=`<div class="kv"><b>目的（も）</b>${escapeHtml(val("f_purpose")||"—")}</div>`;
+  h+=`<div class="kv"><b>現状（げ）</b>${escapeHtml(val("f_current")||"—")}</div>`;
+  h+=`<div class="kv"><b>条件（じょ）</b>${escapeHtml(val("f_cond")||"—")}</div>`;
+  h+=`<div class="kv"><b>目標状態</b>${escapeHtml(val("f_goal")||"—")}</div>`;
+  h+=`<h2>2. 解くべき問題</h2><div class="prob">${escapeHtml(val("f_problem")||"—")}</div>`;
+  h+=`<h2>3. なぜなぜ分析</h2>${whys.length?whysToHtmlList(whys):"<p>—</p>"}`;
+  h+=`<h2>4. 真因（根本原因）</h2><div class="root">${escapeHtml(val("r_root")||"—")}</div>`;
+  h+=`<h2>5. 対策</h2><p>${escapeHtml(val("r_action")||"—")}</p>`;
+  const memo=val("f_memo"); if(memo) h+=`<h2>6. メモ</h2><p>${escapeHtml(memo)}</p>`;
+  const mba=val("f_mba"); if(mba) h+=`<h2>7. MBAレベル分析</h2><div>${mdLite(mba)}</div>`;
+  h+=`<div class="foot">🐰 うさうさ なぜなぜ分析ジェネレーター PRO</div>`;
+  return h;
+}
+function exportPdf(){
+  $("#printReport").innerHTML=buildReportHtml();
+  toast("印刷ダイアログで「PDFに保存」を選んでください");
+  const prev=document.title; document.title=fileBase();
+  const restore=()=>{ document.title=prev; window.removeEventListener("afterprint",restore); };
+  window.addEventListener("afterprint",restore);
+  setTimeout(()=>window.print(),300);
+}
+
+/* ===== 保存・読み込み ===== */
+const FIELDS=["f_title","f_date","f_define","f_purpose","f_current","f_cond","f_goal","f_problem","r_root","r_action","f_memo","f_mba"];
+function snapshot(){ const o={whys}; FIELDS.forEach(f=>o[f]=val(f)); return o; }
+function saveJson(){ download(new Blob([JSON.stringify(snapshot(),null,2)],{type:"application/json"}),fileBase()+"_下書き.json"); toast("下書きを保存しました"); }
+function applyState(o){
+  FIELDS.forEach(f=>{ $("#"+f).value = (o[f]!=null?o[f]:""); });
+  whys=Array.isArray(o.whys)?o.whys:[]; uid=0;
+  (function fix(list){ list.forEach(n=>{ n.id=nid(); n.text=n.text||""; n.memo=n.memo||""; n._memoOpen=!!(n.memo&&n.memo.trim()); n.children=n.children||[]; fix(n.children); }); })(whys);
+  renderWhys();
+}
+function loadJson(file){ const r=new FileReader(); r.onload=()=>{ try{
+  applyState(JSON.parse(r.result)); toast("読み込みました"); flushSave(); }catch(e){ toast("ファイルを読めませんでした",true); logEvent("ERROR","loadJson",(e&&e.message)||String(e)); } }; r.readAsText(file); }
+
+/* CSV取り込み（書き出したCSVを復元） */
+function parseCsv(text){
+  if(text.charCodeAt(0)===0xFEFF) text=text.slice(1);
+  const rows=[]; let row=[],cur="",inQ=false;
+  for(let i=0;i<text.length;i++){ const c=text[i];
+    if(inQ){ if(c==='"'){ if(text[i+1]==='"'){ cur+='"'; i++; } else inQ=false; } else cur+=c; }
+    else { if(c==='"') inQ=true; else if(c===','){ row.push(cur); cur=""; } else if(c==='\r'){} else if(c==='\n'){ row.push(cur); rows.push(row); row=[]; cur=""; } else cur+=c; } }
+  if(cur!==""||row.length){ row.push(cur); rows.push(row); }
+  return rows;
+}
+function isoFromSlash(s){ const m=/^(\d{4})\/(\d{2})\/(\d{2})$/.exec((s||"").trim()); return m?(m[1]+"-"+m[2]+"-"+m[3]):(s||""); }
+function importCsv(text){
+  const rows=parseCsv(text); if(!rows.length){ toast("CSVを読めませんでした",true); return; }
+  let start=(rows[0]&&rows[0][0]==="セクション")?1:0;
+  const o={whys:[]}; const byDepth={};
+  const map={"言葉の定義":"f_define","目的（も）":"f_purpose","現状（げ）":"f_current","条件（じょ）":"f_cond","目標状態":"f_goal"};
+  for(let i=start;i<rows.length;i++){ const r=rows[i]; if(!r||r.length<4) continue;
+    const sec=r[0]||"",depth=r[1]||"",item=r[2]||"",content=r[3]||"",memo=r[4]||"";
+    if(sec==="なぜなぜ"){ const d=parseInt(depth,10)||1; const node={id:nid(),text:content,memo:memo,_memoOpen:!!(memo&&memo.trim()),children:[]};
+      if(d<=1){ o.whys.push(node); } else { const p=byDepth[d-1]; (p?p.children:o.whys).push(node); } byDepth[d]=node; continue; }
+    if(item==="タイトル") o.f_title=content;
+    else if(item==="作成日") o.f_date=isoFromSlash(content);
+    else if(item==="解くべき問題") o.f_problem=content;
+    else if(item==="根本原因") o.r_root=content;
+    else if(item==="打ち手") o.r_action=content;
+    else if(item==="全体メモ") o.f_memo=content;
+    else if(item==="MBAレベル分析") o.f_mba=content;
+    else if(map[item]) o[map[item]]=content;
+  }
+  applyState(o); ensureDate(); flushSave(); toast("CSVを取り込みました");
+}
+function importCsvFile(file){ const r=new FileReader(); r.onload=()=>{ try{ importCsv(r.result); }catch(e){ toast("CSVを取り込めませんでした",true); logEvent("ERROR","importCsv",(e&&e.message)||String(e)); } }; r.readAsText(file); }
+function saveMd(){ download(new Blob([buildMarkdown()],{type:"text/markdown"}),fileBase()+".md"); toast(".md を保存しました"); }
+function download(blob,name){ const a=document.createElement("a"); a.href=URL.createObjectURL(blob); a.download=name; a.click(); setTimeout(()=>URL.revokeObjectURL(a.href),1000); }
+async function copyOut(){ const txt=buildMarkdown(); try{ await navigator.clipboard.writeText(txt); toast("コピーしました"); }
+  catch(e){ const ta=document.createElement("textarea"); ta.value=txt; document.body.appendChild(ta); ta.select(); try{document.execCommand("copy"); toast("コピーしました");}catch(_){toast("コピーできませんでした",true);} ta.remove(); } }
+
+/* ===== 自動保存（途中で中断しても消えない） =====
+   Claude内：window.storage ／ ダウンロード時：localStorage を自動で使い分け。
+   どちらも使えない環境では手動の💾保存を案内する。 */
+const SKEY="usausa_naze2_autosave_v1";
+async function pSet(str){
+  if(window.storage&&window.storage.set){ try{ await window.storage.set(SKEY,str,false); return true; }catch(e){ logEvent("WARN","pSet/window.storage",(e&&e.message)||String(e)); } }
+  try{ localStorage.setItem(SKEY,str); return true; }catch(e){ logEvent("WARN","pSet/localStorage",(e&&e.message)||String(e)); }
+  return false;
+}
+async function pGet(){
+  if(window.storage&&window.storage.get){ try{ const r=await window.storage.get(SKEY); if(r&&r.value) return r.value; }catch(e){ logEvent("WARN","pGet/window.storage",(e&&e.message)||String(e)); } }
+  try{ const v=localStorage.getItem(SKEY); if(v) return v; }catch(e){ logEvent("WARN","pGet/localStorage",(e&&e.message)||String(e)); }
+  return null;
+}
+async function pDel(){
+  if(window.storage&&window.storage.delete){ try{ await window.storage.delete(SKEY); }catch(e){ logEvent("WARN","pDel/window.storage",(e&&e.message)||String(e)); } }
+  try{ localStorage.removeItem(SKEY); }catch(e){ logEvent("WARN","pDel/localStorage",(e&&e.message)||String(e)); }
+}
+let _ready=false,_dirty=false,_saveT=null;
+function setStatus(txt,ok){ const el=$("#saveStatus"); if(el){ el.textContent=txt; el.className="save-status"+(ok?" ok":""); } }
+function scheduleSave(){ if(!_ready) return; _dirty=true; clearTimeout(_saveT); _saveT=setTimeout(flushSave,800); setStatus("💾 自動保存：保存中…"); }
+async function flushSave(){ if(!_ready||!_dirty) return; clearTimeout(_saveT); _dirty=false;
+  const ok=await pSet(JSON.stringify(snapshot()));
+  const n=new Date(),p=x=>String(x).padStart(2,"0");
+  setStatus(ok?("💾 自動保存："+p(n.getHours())+":"+p(n.getMinutes())+":"+p(n.getSeconds())):"⚠ 自動保存できない環境です。手動で💾下書き(JSON)を",ok);
+}
+/* 入力欄（枠組み・真因・対策・全体メモ）でも自動保存 */
+FIELDS.forEach(f=>{ const el=$("#"+f); if(el) el.addEventListener("input",scheduleSave); });
+/* タブを離れる／閉じる直前に確実に保存 */
+document.addEventListener("visibilitychange",()=>{ if(document.visibilityState==="hidden") flushSave(); });
+window.addEventListener("pagehide",flushSave);
+/* 起動時：前回の続きを自動復元してから保存を有効化（空データでの上書きを防ぐ） */
+(async function restore(){
+  try{
+    const raw=await pGet();
+    if(raw){ const o=JSON.parse(raw);
+      const hasContent=FIELDS.some(f=>o[f]&&String(o[f]).trim())||(Array.isArray(o.whys)&&o.whys.length);
+      if(hasContent){ applyState(o); toast("前回の続きから復元しました"); setStatus("💾 自動保存：前回データを復元しました",true); }
+    }
+  }catch(e){ logEvent("ERROR","restore",(e&&e.message)||String(e),(e&&e.stack)||""); }
+  finally{ _ready=true; ensureDate(); scheduleSave(); logEvent("INFO","起動","ツールを起動しました","保存先="+storageMode()); }
+})();
+
+/* ===== イベント ===== */
+$("#btnAddTop").onclick=()=>{ whys.push(newNode()); renderWhys(); };
+$("#btnClearWhy").onclick=()=>{ if(whys.length&&confirm("「なぜ」をすべて消しますか？")){ whys=[]; renderWhys(); } };
+$("#btnFrame").onclick=e=>genProblem(e.currentTarget);
+$("#btnRoot").onclick=e=>genRoot(e.currentTarget);
+$("#btnLogic").onclick=e=>checkLogic(e.currentTarget);
+$("#btnGen").onclick=genOutput;
+$("#btnCopy").onclick=copyOut;
+$("#btnMd").onclick=saveMd;
+$("#btnPdf").onclick=exportPdf;
+$("#btnCsv").onclick=exportCsv;
+$("#btnSave").onclick=saveJson;
+$("#btnLoad").onclick=()=>$("#fileInput").click();
+$("#btnNew").onclick=async()=>{ if(!confirm("入力をすべて消して新規作成しますか？（自動保存データも削除します）")) return;
+  FIELDS.forEach(f=>$("#"+f).value=""); ensureDate(); whys=[]; _dirty=false; renderWhys(); await pDel(); setStatus("💾 自動保存：新規（まだ保存はありません）"); toast("新規作成しました"); };
+$("#btnMba").onclick=e=>genMba(e.currentTarget);
+$("#fileInput").onchange=e=>{ const f=e.target.files[0]; if(f){ (f.name||"").toLowerCase().endsWith(".csv")?importCsvFile(f):loadJson(f); } e.target.value=""; };
+
+/* エラーログ操作 */
+$("#btnLogCopy").onclick=async()=>{ const txt=logText();
+  try{ await navigator.clipboard.writeText(txt); toast("ログをコピーしました"); }
+  catch(e){ const ta=document.createElement("textarea"); ta.value=txt; document.body.appendChild(ta); ta.select(); try{document.execCommand("copy"); toast("ログをコピーしました");}catch(_){toast("コピーできませんでした",true);} ta.remove(); } };
+$("#btnLogSave").onclick=()=>{ download(new Blob([logText()],{type:"text/plain;charset=utf-8"}),fileBase()+"_errorlog.txt"); toast("ログを保存しました"); };
+$("#btnLogClear").onclick=()=>{ _logs=[]; renderLog(); toast("ログをクリアしました"); };
+$("#bugBadge").onclick=()=>{ const d=$("#logDetails"); if(d){ d.open=true; d.scrollIntoView({behavior:"smooth",block:"center"}); } };
+
+renderLog();
+
+renderWhys();
+</script>
+</body>
+</html>
